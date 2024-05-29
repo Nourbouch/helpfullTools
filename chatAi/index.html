@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Audio Transcription</title>
+    <!-- Bootstrap CSS CDN -->
+    <link
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #f8f9fa;
+      }
+
+      .container {
+        max-width: 500px;
+        width: 100%;
+      }
+
+      .card {
+        border: none;
+        box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        border-radius: 15px;
+      }
+
+      .form-group {
+        margin-bottom: 1.5rem;
+      }
+
+      h2 {
+        color: #007bff;
+      }
+
+      label {
+        font-weight: bold;
+      }
+
+      #audioPlayer {
+        margin-top: 1.5rem;
+      }
+
+      #transcriptionResult {
+        margin-top: 1.5rem;
+      }
+
+      .btn-primary {
+        background-color: #007bff;
+        border-color: #007bff;
+      }
+
+      .btn-primary:hover {
+        background-color: #0056b3;
+        border-color: #0056b3;
+      }
+
+      .loader {
+        border: 8px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 8px solid #007bff;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 20px auto;
+        display: none;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2 class="text-center">Audio to Text Transcription</h2>
+      <div class="card p-4">
+        <div class="form-group">
+          <label for="audioOption">Choose your option:</label>
+          <select class="form-control" id="audioOption">
+            <option value="file" selected>Upload an audio file</option>
+            <option value="url">Provide URL</option>
+          </select>
+        </div>
+        <div id="fileInput">
+          <div class="form-group">
+            <label for="audioFile">Select an audio file (.mp3):</label>
+            <input type="file" class="form-control-file" id="audioFile" />
+          </div>
+        </div>
+        <div id="urlInput" style="display: none">
+          <div class="form-group">
+            <label for="audioUrl">Enter audio URL ending with .mp3:</label>
+            <input type="text" class="form-control" id="audioUrl" />
+          </div>
+        </div>
+        <div id="audioPlayer" style="display: none">
+          <h4>Preview:</h4>
+          <audio controls id="audioPreview"></audio>
+        </div>
+        <button id="uploadButton" class="btn btn-primary btn-block mt-3">
+          Upload and Transcribe
+        </button>
+        <div class="mt-4" id="transcriptionResult" style="display: none">
+          <h4>Transcription Result:</h4>
+          <p id="resultText" class="bg-white p-3 border rounded"></p>
+          <button id="copyButton" class="btn btn-primary btn-block mt-3">
+            Copy Text
+          </button>
+        </div>
+        <div class="loader" id="loader"></div>
+      </div>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <script type="module">
+      const baseUrl = "https://api.assemblyai.com/v2";
+      const headers = {
+        Authorization: "03644d7cc7fe40c49f056e784bffa887",
+      };
+
+      document.getElementById("audioOption").addEventListener("change", () => {
+        const option = document.getElementById("audioOption").value;
+        if (option === "file") {
+          document.getElementById("fileInput").style.display = "block";
+          document.getElementById("urlInput").style.display = "none";
+        } else if (option === "url") {
+          document.getElementById("fileInput").style.display = "none";
+          document.getElementById("urlInput").style.display = "block";
+        }
+      });
+
+      document
+        .getElementById("audioOption")
+        .addEventListener("DOMContentLoaded", () => {
+          document.getElementById("fileInput").style.display = "block";
+          document.getElementById("urlInput").style.display = "none";
+        });
+
+      document
+        .getElementById("uploadButton")
+        .addEventListener("click", async () => {
+          const option = document.getElementById("audioOption").value;
+          let audioData;
+          if (option === "file") {
+            const fileInput = document.getElementById("audioFile");
+            if (fileInput.files.length === 0) {
+              alert("Please select an audio file.");
+              return;
+            }
+            audioData = fileInput.files[0];
+          } else if (option === "url") {
+            const audioUrl = document.getElementById("audioUrl").value;
+            if (!audioUrl.endsWith(".mp3")) {
+              alert("Please enter a valid audio URL ending with .mp3.");
+              return;
+            }
+            audioData = audioUrl;
+          }
+
+          try {
+            showLoader();
+            const uploadUrl = await uploadAudio(audioData);
+            const transcriptId = await transcribeAudio(uploadUrl);
+            await pollTranscription(transcriptId);
+            hideLoader();
+          } catch (error) {
+            console.error(error);
+            alert("An error occurred during the transcription process.");
+            hideLoader();
+          }
+        });
+
+      const uploadAudio = async (audioData) => {
+        const formData = new FormData();
+        if (typeof audioData === "object") {
+          formData.append("file", audioData);
+        } else {
+          formData.append("external_url", audioData);
+        }
+
+        const uploadResponse = await fetch(`${baseUrl}/upload`, {
+          method: "POST",
+          headers: {
+            Authorization: headers.Authorization,
+          },
+          body: formData,
+        });
+
+        const uploadData = await uploadResponse.json();
+        return uploadData.upload_url;
+      };
+
+      const transcribeAudio = async (uploadUrl) => {
+        const response = await fetch(`${baseUrl}/transcript`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: headers.Authorization,
+          },
+          body: JSON.stringify({ audio_url: uploadUrl }),
+        });
+
+        const data = await response.json();
+        return data.id;
+      };
+
+      const pollTranscription = async (transcriptId) => {
+        const pollingEndpoint = `${baseUrl}/transcript/${transcriptId}`;
+
+        while (true) {
+          const pollingResponse = await fetch(pollingEndpoint, {
+            headers: {
+              Authorization: headers.Authorization,
+            },
+          });
+
+          const transcriptionResult = await pollingResponse.json();
+          if (transcriptionResult.status === "completed") {
+            document.getElementById("resultText").innerText =
+              transcriptionResult.text;
+            document.getElementById("transcriptionResult").style.display =
+              "block";
+            addButtonCopyFunctionality(); // Call the function to add copy functionality to the button
+            break;
+          } else if (transcriptionResult.status === "error") {
+            throw new Error(
+              `Transcription failed: ${transcriptionResult.error}`
+            );
+          } else {
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+          }
+        }
+      };
+
+      function showLoader() {
+        document.getElementById("loader").style.display = "block";
+      }
+
+      function hideLoader() {
+        document.getElementById("loader").style.display = "none";
+      }
+
+      function addButtonCopyFunctionality() {
+        const copyButton = document.getElementById("copyButton");
+        copyButton.addEventListener("click", () => {
+          const resultText = document.getElementById("resultText");
+          const textToCopy = resultText.innerText;
+
+          // Create a textarea element to hold the text to be copied
+          const textarea = document.createElement("textarea");
+          textarea.value = textToCopy;
+
+          // Ensure it is not displayed
+          textarea.style.position = "fixed";
+          textarea.style.opacity = 0;
+
+          // Append the textarea to the body
+          document.body.appendChild(textarea);
+
+          // Select and copy the text
+          textarea.select();
+          document.execCommand("copy");
+
+          // Remove the textarea
+          document.body.removeChild(textarea);
+
+          // Show a confirmation message
+          alert("Text copied to clipboard!");
+        });
+      }
+    </script>
+  </body>
+</html>
