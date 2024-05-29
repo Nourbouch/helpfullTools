@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Text Extractor</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-gray-100 h-screen flex justify-center items-center">
+    <div class="max-w-md w-full p-6 bg-white rounded-lg shadow-md">
+      <input type="file" accept="image/*" id="fileInput" class="mb-4" />
+      <div id="loader" class="text-center mb-4 hidden">Loading...</div>
+      <div
+        id="textContainer"
+        class="border border-gray-300 rounded p-4 mb-4 hidden"
+      >
+        <p id="extractedText" class="m-0"></p>
+        <button
+          id="copyButton"
+          class="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Copy Text
+        </button>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script>
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", function (event) {
+          const file = event.target.files[0];
+          if (typeof Tesseract !== "undefined") {
+            const reader = new FileReader();
+            reader.onload = function () {
+              const dataURL = reader.result;
+              document.getElementById("loader").classList.remove("hidden");
+              Tesseract.recognize(dataURL, "eng", {
+                logger: (m) => console.log(m),
+              })
+                .then(({ data: { text } }) => {
+                  document.getElementById("extractedText").innerText = text;
+                  document.getElementById("loader").classList.add("hidden");
+                  document
+                    .getElementById("textContainer")
+                    .classList.remove("hidden");
+                  document
+                    .getElementById("copyButton")
+                    .classList.remove("hidden");
+                })
+                .catch((error) => {
+                  console.error("Error:", error);
+                  document.getElementById("loader").classList.add("hidden");
+                });
+            };
+            reader.readAsDataURL(file);
+          } else {
+            console.error("Tesseract.js is not loaded or initialized.");
+          }
+        });
+
+      document
+        .getElementById("copyButton")
+        .addEventListener("click", function () {
+          const extractedText =
+            document.getElementById("extractedText").innerText;
+          navigator.clipboard
+            .writeText(extractedText)
+            .then(() => {
+              alert("Text copied to clipboard!");
+            })
+            .catch((error) => {
+              console.error("Error copying text:", error);
+            });
+        });
+    </script>
+  </body>
+</html>
